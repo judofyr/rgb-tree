@@ -233,7 +233,7 @@ pub fn Link(
         children: [2]?*Self = .{ null, null },
         parent: ?*Self = null,
 
-        pub fn getChild(self: *Self, dir: Dir) ?*Self {
+        pub fn getChild(self: Self, dir: Dir) ?*Self {
             return self.children[@enumToInt(dir)];
         }
 
@@ -260,7 +260,7 @@ pub fn Link(
 pub fn Tree(
     comptime N: usize,
     comptime Key: type,
-    comptime getKey: fn (link: *Link(N)) Key,
+    comptime getKey: fn (link: *const Link(N)) Key,
     comptime compare: fn (lhs: anytype, rhs: anytype) Order,
 ) type {
     return struct {
@@ -284,6 +284,22 @@ pub fn Tree(
 
         fn validateLink(self: *const Self, link: *const LinkType) error{ InvalidParent, InvalidDecrease, InvalidBalance, InvalidOrder }!usize {
             _ = self;
+
+            const key = getKey(link);
+
+            if (link.getChild(.left)) |left_child| {
+                const left_key = getKey(left_child);
+                if (compare(key, left_key) == Order.lt) {
+                    return error.InvalidOrder;
+                }
+            }
+
+            if (link.getChild(.right)) |right_child| {
+                const right_key = getKey(right_child);
+                if (compare(key, right_key) == Order.gt) {
+                    return error.InvalidOrder;
+                }
+            }
 
             var heights: [2]usize = .{ 0, 0 };
 
@@ -448,7 +464,7 @@ pub fn Tree(
 
         fn insertInto(self: *Self, link: *LinkType, new_link: *LinkType, key: Key) void {
             const link_key = getKey(link);
-            const dir = switch (compare(link_key, key)) {
+            const dir = switch (compare(key, link_key)) {
                 .eq, .lt => Dir.left,
                 .gt => Dir.right,
             };
@@ -636,7 +652,7 @@ pub fn MapTree(
     comptime compare: fn (lhs: anytype, rhs: anytype) Order,
 ) type {
     const getKey = struct {
-        fn getKey(link: *Link(N)) Key {
+        fn getKey(link: *const Link(N)) Key {
             return @fieldParentPtr(MapNode(N, Key, Value), "link", link).key;
         }
     }.getKey;
