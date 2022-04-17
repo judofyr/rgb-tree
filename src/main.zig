@@ -1,7 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
-
 const assert = std.debug.assert;
+const Order = std.math.Order;
 
 // Alright, lets dive straigth into the complicated logic here.
 // Modifications of an RGB tree first happens naively (insert/remove)
@@ -258,15 +258,14 @@ pub fn Link(
 }
 
 pub fn Tree(
-    comptime Context: type,
+    comptime N: usize,
+    comptime Key: type,
+    comptime getKey: fn (link: *Link(N)) Key,
+    comptime compare: fn (lhs: anytype, rhs: anytype) Order,
 ) type {
     return struct {
         const Self = @This();
-        const LinkType = @TypeOf(@field(@as(Node, undefined), link_field));
-        const Key = Context.Key;
-        const Node = Context.Node;
-        const N = LinkType.N;
-        const link_field = Context.link_field;
+        const LinkType = Link(N);
 
         root: ?*LinkType = null,
 
@@ -311,25 +310,24 @@ pub fn Tree(
         }
 
         // Entrypoints to the public API
-        pub fn find(self: *Self, ctx: Context, key: Key) ?*Node {
+        pub fn find(self: *Self, key: Key) ?*LinkType {
             if (self.root) |root| {
-                return self.findIn(ctx, root, key);
+                return self.findIn(root, key);
             } else {
                 return null;
             }
         }
 
-        pub fn insert(self: *Self, ctx: Context, node: *Node) void {
+        pub fn insert(self: *Self, link: *LinkType) void {
             if (self.root) |root| {
-                self.insertInto(ctx, root, node);
+                const key = getKey(link);
+                self.insertInto(root, link, key);
             } else {
-                self.root = &@field(node, link_field);
+                self.root = link;
             }
         }
 
-        pub fn remove(self: *Self, node: *Node) void {
-            var link = &@field(node, link_field);
-
+        pub fn remove(self: *Self, link: *LinkType) void {
             var left_link = link.getChild(.left);
             var right_link = link.getChild(.right);
 
@@ -344,25 +342,25 @@ pub fn Tree(
             }
         }
 
-        pub fn first(self: *Self) ?*Node {
+        pub fn first(self: *Self) ?*LinkType {
             if (self.root) |link| {
-                return @fieldParentPtr(Node, link_field, self.firstOf(link));
+                return self.firstOf(link);
             }
             return null;
         }
 
-        pub fn next(self: *Self, node: *Node) ?*Node {
-            var link = &@field(node, link_field);
-            if (link.getChild(.right)) |right_link| {
-                return @fieldParentPtr(Node, link_field, self.firstOf(right_link));
+        pub fn next(self: *Self, link: *LinkType) ?*LinkType {
+            var curr = link;
+            if (curr.getChild(.right)) |right_link| {
+                return self.firstOf(right_link);
             }
 
-            while (link.parent) |parent_link| {
-                if (parent_link.dirOf(link) == .left) {
-                    return @fieldParentPtr(Node, link_field, parent_link);
+            while (curr.parent) |parent_link| {
+                if (parent_link.dirOf(curr) == .left) {
+                    return parent_link;
                 }
 
-                link = parent_link;
+                curr = parent_link;
             }
 
             return null;
@@ -403,19 +401,17 @@ pub fn Tree(
 
         // Helper methods related to querying
 
-        fn findIn(self: *Self, ctx: Context, link: *LinkType, key: Key) ?*Node {
-            const node = @fieldParentPtr(Node, link_field, link);
-            const node_key = ctx.getKey(node);
+        fn findIn(self: *Self, link: *LinkType, key: Key) ?*LinkType {
+            const link_key = getKey(link);
 
-            const lt = ctx.lessThan(key, node_key);
-            const gt = ctx.lessThan(node_key, key);
-
-            if (!lt and !gt) return node;
-
-            const dir = if (lt) Dir.left else Dir.right;
+            const dir = switch (compare(key, link_key)) {
+                .eq => return link,
+                .lt => Dir.left,
+                .gt => Dir.right,
+            };
 
             if (link.getChild(dir)) |child| {
-                return self.findIn(ctx, child, key);
+                return self.findIn(child, key);
             } else {
                 return null;
             }
@@ -450,17 +446,17 @@ pub fn Tree(
             }
         }
 
-        fn insertInto(self: *Self, ctx: Context, link: *LinkType, node: *Node) void {
-            const other_link = &@field(node, link_field);
-            const link_key = ctx.getKey(@fieldParentPtr(Node, link_field, link));
-            const node_key = ctx.getKey(node);
-            const dir = if (ctx.lessThan(node_key, link_key)) Dir.left else Dir.right;
-
+        fn insertInto(self: *Self, link: *LinkType, new_link: *LinkType, key: Key) void {
+            const link_key = getKey(link);
+            const dir = switch (compare(link_key, key)) {
+                .eq, .lt => Dir.left,
+                .gt => Dir.right,
+            };
             if (link.getChild(dir)) |child| {
-                self.insertInto(ctx, child, node);
+                self.insertInto(child, new_link, key);
             } else {
-                link.setChild(dir, other_link);
-                self.setColorFromParent(other_link, link);
+                link.setChild(dir, new_link);
+                self.setColorFromParent(new_link, link);
             }
         }
 
@@ -591,10 +587,9 @@ pub fn Tree(
 }
 
 pub fn MapNode(
+    comptime N: usize,
     comptime Key: type,
     comptime Value: type,
-    comptime N: usize,
-    comptime lessThan: fn (ctx: void, lhs: Key, rhs: Key) bool,
 ) type {
     return struct {
         const Self = @This();
@@ -602,20 +597,6 @@ pub fn MapNode(
         key: Key,
         value: Value,
         link: Link(N) = .{},
-
-        pub const Context = struct {
-            pub const Key = Key;
-            pub const Node = Self;
-            pub const link_field = "link";
-
-            pub fn getKey(_: Context, node: *Node) Key {
-                return node.key;
-            }
-
-            pub fn lessThan(_: Context, lhs: Key, rhs: Key) bool {
-                return lessThan({}, lhs, rhs);
-            }
-        };
 
         // Implements dot-builder interface.
 
@@ -648,13 +629,29 @@ pub fn MapNode(
     };
 }
 
+pub fn MapTree(
+    comptime N: usize,
+    comptime Key: type,
+    comptime Value: type,
+    comptime compare: fn (lhs: anytype, rhs: anytype) Order,
+) type {
+    const getKey = struct {
+        fn getKey(link: *Link(N)) Key {
+            return @fieldParentPtr(MapNode(N, Key, Value), "link", link).key;
+        }
+    }.getKey;
+
+    return Tree(N, Key, getKey, compare);
+}
+
 const tester = @import("tester.zig");
 
 pub fn testInsertRemove(
     comptime N: usize,
     comptime Count: usize,
 ) !void {
-    const Node = MapNode(usize, void, N, comptime std.sort.asc(usize));
+    const Node = MapNode(N, usize, void);
+    const NodeTree = MapTree(N, usize, void, std.math.order);
 
     var nodes: [Count]Node = undefined;
 
@@ -675,7 +672,7 @@ pub fn testInsertRemove(
         pub fn onComplete(self: *@This(), builder: anytype) !void {
             self.node_idx = 0;
             const root_node = self.populate(builder, 0);
-            var tree: Tree(Node.Context) = .{ .root = &root_node.link };
+            var tree: NodeTree = .{ .root = &root_node.link };
 
             tree.validate() catch |err| {
                 if (err != error.InvalidBalance) {
@@ -685,11 +682,12 @@ pub fn testInsertRemove(
             };
 
             // Next we set the keys to 1, 3, 5, …
-            var node = tree.first();
+            var link = tree.first();
             var key: usize = 1;
-            while (node) |n| : (key += 2) {
-                n.key = key;
-                node = tree.next(n);
+            while (link) |l| : (key += 2) {
+                var node = @fieldParentPtr(Node, "link", l);
+                node.key = key;
+                link = tree.next(l);
             }
             try self.possible_nodes.append(self.nodes.*);
         }
@@ -728,9 +726,9 @@ pub fn testInsertRemove(
         var key: usize = 0;
         while (key < Count * 2 + 1) : (key += 2) {
             nodes = n;
-            var tree = Tree(Node.Context){ .root = &nodes[0].link };
+            var tree = NodeTree{ .root = &nodes[0].link };
             var node = Node{ .key = key, .value = {} };
-            tree.insert(.{}, &node);
+            tree.insert(&node.link);
             try tree.validate();
         }
 
@@ -738,9 +736,11 @@ pub fn testInsertRemove(
         key = 1;
         while (key < Count * 2) : (key += 2) {
             nodes = n;
-            var tree = Tree(Node.Context){ .root = &nodes[0].link };
-            const node = tree.find(.{}, key) orelse return error.NoSuchKey;
-            tree.remove(node);
+            var tree = NodeTree{ .root = &nodes[0].link };
+            var link = tree.find(key) orelse return error.NoSuchKey;
+            var node = @fieldParentPtr(Node, "link", link);
+            try testing.expectEqual(key, node.key);
+            tree.remove(link);
             try tree.validate();
         }
     }
