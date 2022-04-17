@@ -57,3 +57,48 @@ The "class nodes" are 0-colored nodes and the height of a node serves the same p
 The color of a node in an RGB tree can be look at as an _approximation_ of its height when we partition the tree by the 0-colored nodes.
 Being an approximation means that RGB trees require less maintenance:
 In many operations we don't need to change the color of a node, but in a PBST the height of a node has to be maintained exact at all times.
+
+## Usage in Zig
+
+This library is designed as an _intrusive_ data structure.
+All of the public methods (e.g. `insert`, `find`, `remove`) only deals with a _link_.
+This is a tiny struct which _only_ contains information about children/parent/color.
+In order to use this library you should create your own struct and embed the link as a field.
+You initialize the tree with four parameters:
+
+- `n`: The parameter of the RGB tree.
+- `Key`: The type which is used for the _key_.
+- `getKey(Link) -> Key`: A helper function which converts a link to a key.
+  This will typically use `@fieldParentPtr`.
+- `compare(anytype, anytype) Order`: Comparison function.
+
+```zig
+const rgb = @import("rgb-tree");
+
+const Node = struct {
+    birth_year: u32,
+
+    link: rgb.Link(1) = .{},
+};
+
+fn linkToKey(link: *rgb.Link(1)) u32 {
+    return @fieldParentPtr(Node, "link", link).key;
+}
+
+const Tree = rgb.Tree(
+    1,               // Parameter N
+    u32,             // Key type
+    linkToKey,       // Link -> Key
+    std.math.order,  // Compare function
+);
+
+var tree = Tree.init();
+
+var node1 = Node{.birth_year = 1900};
+tree.insert(&node1);
+
+var link = tree.find(1900) orelse @panic("could not find it");
+var node2 = @fieldParentPtr(Node, "link", link);
+
+// node1 and node2 are actually the same thing!
+```
