@@ -27,10 +27,24 @@ The more colors, the more imbalances we allow, and thus fewer rotations are need
 
 An RGB tree of order 1 is equivalent to a red-black tree by interpreting the color 0 as black and 1 as red.
 
+### Why would you use it?
+
+Yes, that is also what I'm wondering about.
+Honestly, this work is only motivated by curiosity, combined with me wanting to learn more Zig.
+
+At the very least, you can always set `n=1` and you'll end up with a regular red-black tree.
+They are quite useful and not at all trivial to implement.
+Maybe you'll find this library useful for your red-black needs.
+
+You could also try to increase `n` and see how that impacts the performance of your use case.
+This should theoretically speed up inserts/removals at the cost of slowing down querying.
+If you have a tree which is frequently modified _without querying_ (e.g. because your nodes can be accessed in another way) then this might be advantageous.
+
 RGB trees have another interesting possibility:
-A 0-colored node will have at most `2^n` connected descendants which are not 0-colored.
+A 0-colored node will have at most `2^n` descendants which are not 0-colored.
 This makes it possible for the 0-colored nodes to (physically, in memory) be a single large block containing all of these descendants as well.
-Then it behaves more like a B-tree which have many practical advantages today.
+Each new 0-colored node denotes a new "block" of data.
+This is similar to how B-trees are structured and is often useful when it's cheaper to access local memory.
 
 ### Related works
 
