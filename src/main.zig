@@ -222,19 +222,19 @@ const Dir = enum {
 };
 
 pub fn Link(
-    comptime N: usize,
+    comptime n: usize,
 ) type {
     return struct {
         const Self = @This();
         pub const Color = std.math.IntFittingRange(0, N);
-        pub const N = N;
+        pub const N = n;
 
         color: Color = 0,
         children: [2]?*Self = .{ null, null },
         parent: ?*Self = null,
 
         pub fn getChild(self: Self, dir: Dir) ?*Self {
-            return self.children[@enumToInt(dir)];
+            return self.children[@intFromEnum(dir)];
         }
 
         // dirOf returns the direction of a child.
@@ -249,7 +249,7 @@ pub fn Link(
         }
 
         fn setChild(self: *Self, dir: Dir, child: ?*Self) void {
-            self.children[@enumToInt(dir)] = child;
+            self.children[@intFromEnum(dir)] = child;
             if (child) |c| {
                 c.parent = self;
             }
@@ -283,8 +283,6 @@ pub fn Tree(
         }
 
         fn validateLink(self: *const Self, link: *const LinkType) error{ InvalidParent, InvalidDecrease, InvalidBalance, InvalidOrder }!usize {
-            _ = self;
-
             const key = getKey(link);
 
             if (link.getChild(.left)) |left_child| {
@@ -303,7 +301,7 @@ pub fn Tree(
 
             var heights: [2]usize = .{ 0, 0 };
 
-            for (link.children) |child, idx| {
+            for (link.children, 0..) |child, idx| {
                 if (child) |child_link| {
                     if (child_link.parent != link) return error.InvalidParent;
 
@@ -715,7 +713,7 @@ pub fn testInsertRemove(
                 .key = 0,
                 .value = {},
             };
-            node.link.color = @intCast(Link(N).Color, builder.getColor(i));
+            node.link.color = @intCast(builder.getColor(i));
             if (builder.getLeft(i)) |child| {
                 var child_node = self.populate(builder, child);
                 node.link.setChild(.left, &child_node.link);

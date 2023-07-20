@@ -95,7 +95,7 @@ pub fn BinaryTreeBuilder(
         const Self = @This();
 
         // How many possible nodes is there in the tree?
-        pub const MaxNodes = @shlExact(1, Count) - 1;
+        pub const MaxNodes = @shlExact(@as(usize, 1), Count) - 1;
         pub const NodeBitSet = std.bit_set.StaticBitSet(MaxNodes);
 
         pub const Action = usize;
