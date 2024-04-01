@@ -309,7 +309,7 @@ pub fn Tree(
                         return error.InvalidDecrease;
                     }
 
-                    var child_count = try self.validateLink(child_link);
+                    const child_count = try self.validateLink(child_link);
                     heights[idx] = child_count;
                 }
             }
@@ -342,15 +342,15 @@ pub fn Tree(
         }
 
         pub fn remove(self: *Self, link: *LinkType) void {
-            var left_link = link.getChild(.left);
-            var right_link = link.getChild(.right);
+            const left_link = link.getChild(.left);
+            const right_link = link.getChild(.right);
 
             if (left_link == null) {
                 self.removeLink(link, .left);
             } else if (right_link == null) {
                 self.removeLink(link, .right);
             } else {
-                var succ = self.firstOf(right_link.?);
+                const succ = self.firstOf(right_link.?);
                 self.removeLink(succ, .left);
                 self.replaceLink(link, succ);
             }
@@ -751,8 +751,8 @@ pub fn testInsertRemove(
         while (key < Count * 2) : (key += 2) {
             nodes = n;
             var tree = NodeTree{ .root = &nodes[0].link };
-            var link = tree.find(key) orelse return error.NoSuchKey;
-            var node = @fieldParentPtr(Node, "link", link);
+            const link = tree.find(key) orelse return error.NoSuchKey;
+            const node = @fieldParentPtr(Node, "link", link);
             try testing.expectEqual(key, node.key);
             tree.remove(link);
             try tree.validate();
