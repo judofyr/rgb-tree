@@ -44,14 +44,20 @@ pub fn generate(
     // The algorithm is to always look at the latest frame. First undo the previous action
     // which was applied, then apply the next action and generate a new set of actions.
 
-    var actions = std.ArrayList(Builder.Action).init(allocator);
-    defer actions.deinit();
+    const Actions = std.ArrayList(Builder.Action);
+    var actions: Actions = .empty;
+    defer actions.deinit(allocator);
 
-    var frames = std.ArrayList(Frame).init(allocator);
-    defer frames.deinit();
+    const Frames = std.ArrayList(Frame);
+    var frames: Frames = .empty;
+    defer frames.deinit(allocator);
 
-    try builder.generate(&actions);
-    try frames.append(.{ .left = 0, .right = actions.items.len, .next = 0 });
+    try builder.generate(&actions, allocator);
+    try frames.append(allocator, .{
+        .left = 0,
+        .right = actions.items.len,
+        .next = 0,
+    });
 
     while (frames.items.len > 0) {
         var frame = &frames.items[frames.items.len - 1];
@@ -75,10 +81,14 @@ pub fn generate(
         frame.next += 1;
 
         const left = actions.items.len;
-        try builder.generate(&actions);
+        try builder.generate(&actions, allocator);
         const right = actions.items.len;
         if (left < right) {
-            try frames.append(.{ .left = left, .right = right, .next = left });
+            try frames.append(allocator, .{
+                .left = left,
+                .right = right,
+                .next = left,
+            });
         }
     }
 }
@@ -119,7 +129,11 @@ pub fn BinaryTreeBuilder(
             return self;
         }
 
-        pub fn generate(self: *const Self, list: *std.ArrayList(Action)) !void {
+        pub fn generate(
+            self: *const Self,
+            list: *std.ArrayList(Action),
+            alloc: std.mem.Allocator,
+        ) !void {
             if (self.used_count == Count) return;
 
             // Since we're enumerating all possible trees we need to take some
@@ -135,7 +149,7 @@ pub fn BinaryTreeBuilder(
             var free_iter = self.free_slots.iterator(.{});
             while (free_iter.next()) |idx| {
                 if (last_used == null or idx > last_used.?) {
-                    try list.append(idx);
+                    try list.append(alloc, idx);
                 }
             }
         }
@@ -213,7 +227,7 @@ pub fn RGBTreeBuilder(
         const BinaryBuilder = BinaryTreeBuilder(Count, struct {
             pub fn onComplete(self: @This(), binary_builder: anytype) !void {
                 _ = self;
-                const builder = @fieldParentPtr(Self, "binary_builder", binary_builder);
+                const builder: *Self = @fieldParentPtr("binary_builder", binary_builder);
                 builder.state = .coloring;
             }
         });
@@ -246,13 +260,19 @@ pub fn RGBTreeBuilder(
             };
         }
 
-        pub fn generate(self: *Self, list: *std.ArrayList(Action)) !void {
+        pub fn generate(
+            self: *Self,
+            list: *std.ArrayList(Action),
+            alloc: std.mem.Allocator,
+        ) !void {
             switch (self.state) {
                 .tree_building => {
-                    var inner = std.ArrayList(BinaryBuilder.Action).init(list.allocator);
-                    defer inner.deinit();
-                    try self.binary_builder.generate(&inner);
-                    try list.ensureUnusedCapacity(inner.items.len);
+                    var inner: std.ArrayList(BinaryBuilder.Action) = .empty;
+                    defer inner.deinit(alloc);
+
+                    try self.binary_builder.generate(&inner, alloc);
+                    try list.ensureUnusedCapacity(alloc, inner.items.len);
+
                     for (inner.items) |inner_action| {
                         list.appendAssumeCapacity(.{ .build_tree = inner_action });
                     }
@@ -276,7 +296,11 @@ pub fn RGBTreeBuilder(
 
                             var color: usize = 0;
                             while (color <= max_color) : (color += 1) {
-                                try list.append(.{ .color = .{ .idx = idx, .color = color, .is_last = is_last } });
+                                try list.append(alloc, .{ .color = .{
+                                    .idx = idx,
+                                    .color = color,
+                                    .is_last = is_last,
+                                } });
                             }
 
                             return;
