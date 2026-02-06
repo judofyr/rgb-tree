@@ -621,17 +621,19 @@ pub fn MapNode(
             }));
 
             if (self.link.getChild(.left)) |child| {
+                const link_node: *Self = @fieldParentPtr("link", child);
                 try b.defEdge(
                     self,
-                    @fieldParentPtr(Self, "link", child),
+                    link_node,
                     b.attrs().withLabel("left", .{}),
                 );
             }
 
             if (self.link.getChild(.right)) |child| {
+                const link_node: *Self = @fieldParentPtr("link", child);
                 try b.defEdge(
                     self,
-                    @fieldParentPtr(Self, "link", child),
+                    link_node,
                     b.attrs().withLabel("right", .{}),
                 );
             }
@@ -651,7 +653,8 @@ pub fn MapTree(
 ) type {
     const getKey = struct {
         fn getKey(link: *const Link(N)) Key {
-            return @fieldParentPtr(MapNode(N, Key, Value), "link", link).key;
+            const node: *const MapNode(N, Key, Value) = @fieldParentPtr("link", link);
+            return node.key;
         }
     }.getKey;
 
@@ -666,11 +669,14 @@ pub fn testInsertRemove(
 ) !void {
     const Node = MapNode(N, usize, void);
     const NodeTree = MapTree(N, usize, void, std.math.order);
+    const NodeList = std.ArrayList([Count]Node);
 
     var nodes: [Count]Node = undefined;
 
-    var possible_nodes = std.ArrayList([Count]Node).init(testing.allocator);
-    defer possible_nodes.deinit();
+    const alloc = std.testing.allocator;
+
+    var possible_nodes: NodeList = .empty;
+    defer possible_nodes.deinit(alloc);
 
     // Here are some dragons: The arrays inside possible_nodes are only valid
     // when it's being copied into `nodes`. That is, the internal pointers all
@@ -680,7 +686,7 @@ pub fn testInsertRemove(
 
     const Context = struct {
         nodes: *[Count]Node,
-        possible_nodes: *std.ArrayList([Count]Node),
+        possible_nodes: *NodeList,
         node_idx: usize = 0,
 
         pub fn onComplete(self: *@This(), builder: anytype) !void {
@@ -699,11 +705,11 @@ pub fn testInsertRemove(
             var link = tree.first();
             var key: usize = 1;
             while (link) |l| : (key += 2) {
-                var node = @fieldParentPtr(Node, "link", l);
+                var node: *Node = @fieldParentPtr("link", l);
                 node.key = key;
                 link = tree.next(l);
             }
-            try self.possible_nodes.append(self.nodes.*);
+            try self.possible_nodes.append(alloc, self.nodes.*);
         }
 
         fn populate(self: *@This(), builder: anytype, i: usize) *Node {
@@ -752,7 +758,7 @@ pub fn testInsertRemove(
             nodes = n;
             var tree = NodeTree{ .root = &nodes[0].link };
             const link = tree.find(key) orelse return error.NoSuchKey;
-            const node = @fieldParentPtr(Node, "link", link);
+            const node: *Node = @fieldParentPtr("link", link);
             try testing.expectEqual(key, node.key);
             tree.remove(link);
             try tree.validate();

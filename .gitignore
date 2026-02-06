@@ -1,2 +1,4 @@
-zig-cache
-coverage
+.zig-cache
+zig-out
+
+/coverage
